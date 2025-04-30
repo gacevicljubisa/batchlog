@@ -21,7 +21,7 @@ func newCommand() (c *command, err error) {
 		},
 	}
 
-	if err := c.initFullCmd(); err != nil {
+	if err := c.initExportCmd(); err != nil {
 		return nil, err
 	}
 

@@ -1,4 +1,4 @@
-package full
+package eventfetcher
 
 import (
 	"context"
@@ -11,15 +11,14 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/gacevicljubisa/batchlog/pkg/ethclient"
+	"github.com/gacevicljubisa/batchlog/pkg/ethclientwrapper"
 )
 
 type Client struct {
 	validate        *validator.Validate
-	client          *ethclient.Client
+	client          *ethclientwrapper.Client
 	blockRangeLimit uint32
 
-	// Cached postage stamp contract event topics.
 	batchCreatedTopic       common.Hash
 	batchTopUpTopic         common.Hash
 	batchDepthIncreaseTopic common.Hash
@@ -27,7 +26,7 @@ type Client struct {
 	pausedTopic             common.Hash
 }
 
-func NewClient(client *ethclient.Client, postageStampContractABI abi.ABI, blockRangeLimit uint32) *Client {
+func NewClient(client *ethclientwrapper.Client, postageStampContractABI abi.ABI, blockRangeLimit uint32) *Client {
 	return &Client{
 		validate:                validator.New(),
 		client:                  client,
@@ -43,7 +42,7 @@ func NewClient(client *ethclient.Client, postageStampContractABI abi.ABI, blockR
 type Request struct {
 	Address    common.Address `validate:"required"`
 	StartBlock uint64
-	EndBlock   uint64 // If 0, defaults to the latest block
+	EndBlock   uint64
 }
 
 // GetLogs fetches logs and sends them to a channel
