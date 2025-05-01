@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/go-playground/validator/v10"
 
 	"github.com/ethereum/go-ethereum"
@@ -17,6 +18,7 @@ import (
 type Client struct {
 	validate        *validator.Validate
 	client          *ethclientwrapper.Client
+	logger          log.Logger
 	blockRangeLimit uint32
 
 	batchCreatedTopic       common.Hash
@@ -26,10 +28,11 @@ type Client struct {
 	pausedTopic             common.Hash
 }
 
-func NewClient(client *ethclientwrapper.Client, postageStampContractABI abi.ABI, blockRangeLimit uint32) *Client {
+func NewClient(client *ethclientwrapper.Client, postageStampContractABI abi.ABI, blockRangeLimit uint32, logger log.Logger) *Client {
 	return &Client{
 		validate:                validator.New(),
 		client:                  client,
+		logger:                  logger,
 		blockRangeLimit:         blockRangeLimit,
 		batchCreatedTopic:       postageStampContractABI.Events["BatchCreated"].ID,
 		batchTopUpTopic:         postageStampContractABI.Events["BatchTopUp"].ID,
@@ -47,7 +50,7 @@ type Request struct {
 
 // GetLogs fetches logs and sends them to a channel
 func (c *Client) GetLogs(ctx context.Context, tr *Request) (<-chan types.Log, <-chan error) {
-	logChan := make(chan types.Log, 10)
+	logChan := make(chan types.Log, 100)
 	errorChan := make(chan error, 1)
 
 	go func() {
@@ -96,7 +99,7 @@ func (c *Client) GetLogs(ctx context.Context, tr *Request) (<-chan types.Log, <-
 func (c *Client) fetchLogs(ctx context.Context, query ethereum.FilterQuery, logsChan chan<- types.Log, errorChan chan<- error) {
 	maxBlocks := uint64(c.blockRangeLimit)
 	startBlock := query.FromBlock.Uint64()
-	endBlock := query.ToBlock.Uint64() // Safe now because toBlock is guaranteed non-nil
+	endBlock := query.ToBlock.Uint64()
 
 	for start := startBlock; start <= endBlock; start += maxBlocks {
 		currentEnd := start + maxBlocks - 1
@@ -113,7 +116,7 @@ func (c *Client) fetchLogs(ctx context.Context, query ethereum.FilterQuery, logs
 			Topics:    query.Topics,
 		}
 
-		fmt.Printf("querying logs from block %d to block %d\n", chunkQuery.FromBlock.Uint64(), chunkQuery.ToBlock.Uint64())
+		c.logger.Debug("querying logs", "fromBlock", chunkQuery.FromBlock.Uint64(), "toBlock", chunkQuery.ToBlock.Uint64())
 
 		logs, err := c.client.FilterLogs(ctx, chunkQuery)
 		if err != nil {

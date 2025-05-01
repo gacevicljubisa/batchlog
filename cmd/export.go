@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -38,7 +37,7 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			ctx := cmd.Context()
 
-			ec, err := ethclient.NewClient(ctx, rpcEndpoint, ethclient.WithRateLimit(maxRequest))
+			ec, err := ethclient.NewClient(ctx, rpcEndpoint, ethclient.WithRateLimit(maxRequest), ethclient.WithLogger(c.log))
 			if err != nil {
 				return fmt.Errorf("failed to connect to the Ethereum client: %w", err)
 			}
@@ -56,13 +55,13 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 
 			postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
 
-			client := eventfetcher.NewClient(ec, postageStampContractABI, blockRangeLimit)
+			client := eventfetcher.NewClient(ec, postageStampContractABI, blockRangeLimit, c.log)
 
 			if startBlock == 0 {
 				startBlock = chainCfg.PostageStampStartBlock
 			}
 
-			log.Printf("Retrieving logs from block %d to %d...\n", startBlock, endBlock)
+			c.log.Info("Retrieving logs", "startBlock", startBlock, "endBlock", endBlock)
 
 			logChan, errorChan := client.GetLogs(ctx, &eventfetcher.Request{
 				Address:    chainCfg.PostageStampAddress,
@@ -73,16 +72,18 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 			var wg sync.WaitGroup
 			wg.Add(1)
 
-			ticker := time.NewTicker(10 * time.Second)
+			ticker := time.NewTicker(15 * time.Second)
 			defer ticker.Stop()
 
 			go func() {
 				defer wg.Done()
 				if err := filestore.SaveLogsAsync(ctx, logChan, outputFile); err != nil {
 					if errors.Is(err, context.Canceled) {
-						log.Fatalf("not all logs have been saved: %v", err)
+						c.log.Error(err, "context canceled while saving logs")
+						return
 					}
-					log.Fatalf("failed to save logs: %v", err)
+					c.log.Error(err, "error saving logs")
+					return
 				}
 			}()
 
@@ -95,9 +96,9 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 						return fmt.Errorf("error retrieving logs: %w", err)
 					}
 				case <-ticker.C:
-					log.Println("processing...")
+					c.log.Info("still retrieving logs...")
 				case <-ctx.Done():
-					log.Println("shutting down...")
+					c.log.Info("context canceled, waiting for logs to be saved...")
 					wg.Wait()
 					return ctx.Err()
 				}
@@ -108,7 +109,7 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 			}
 
 			wg.Wait()
-			log.Println("all logs have been saved.")
+			c.log.Info("all logs have been saved", "outputFile", outputFile)
 			return nil
 		},
 	}

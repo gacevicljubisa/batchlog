@@ -7,12 +7,14 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"golang.org/x/time/rate"
 )
 
 type Client struct {
 	*ethclient.Client
 	limiter *rate.Limiter
+	logger  log.Logger
 	rawURL  string
 	mu      sync.Mutex
 }
@@ -23,6 +25,13 @@ type ClientOption func(*Client)
 func WithRateLimit(requestsPerSecond int) ClientOption {
 	return func(c *Client) {
 		c.limiter = rate.NewLimiter(rate.Limit(requestsPerSecond), requestsPerSecond)
+	}
+}
+
+// WithLogger sets a logger for the Ethereum client.
+func WithLogger(logger log.Logger) ClientOption {
+	return func(c *Client) {
+		c.logger = logger
 	}
 }
 
@@ -37,6 +46,7 @@ func NewClient(ctx context.Context, rawURL string, opts ...ClientOption) (*Clien
 		Client:  ethclient,
 		rawURL:  rawURL,
 		limiter: nil,
+		logger:  log.Noop,
 	}
 
 	for _, option := range opts {
