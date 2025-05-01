@@ -72,5 +72,5 @@ func newLogger(verbosity string) (logger log.Logger, err error) {
 		return nil, fmt.Errorf("invalid verbosity level: %s", verbosity)
 	}
 
-	return log.NewLogger("batchlog", log.WithVerbosity(level)).Register(), nil
+	return log.NewLogger("batchlog", log.WithVerbosity(level), log.WithTimestamp()).Register(), nil
 }
