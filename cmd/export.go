@@ -12,6 +12,7 @@ import (
 	ethclient "github.com/gacevicljubisa/batchlog/pkg/ethclientwrapper"
 	"github.com/gacevicljubisa/batchlog/pkg/eventfetcher"
 	"github.com/gacevicljubisa/batchlog/pkg/filestore"
+	"github.com/gacevicljubisa/batchlog/pkg/gzipstore"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,7 @@ func (c *command) initExportCmd() (err error) {
 		maxRequest      int
 		blockRangeLimit uint32
 		outputFile      string
+		compress        bool
 	)
 
 	cmd := &cobra.Command{
@@ -85,7 +87,18 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 					c.log.Error(err, "error saving logs")
 					return
 				}
+				c.log.Info("all logs have been saved", "outputFile", outputFile)
 			}()
+
+			compressFunc := func() error {
+				if compress {
+					if err := gzipstore.CompressFile(outputFile, outputFile+".gzip"); err != nil {
+						return fmt.Errorf("error compressing file: %w", err)
+					}
+					c.log.Info("File compressed", "outputFile", outputFile+".gzip")
+				}
+				return nil
+			}
 
 			for {
 				select {
@@ -99,7 +112,7 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 					c.log.Info("still retrieving logs...")
 				case <-ctx.Done():
 					c.log.Info("context canceled, waiting for logs to be saved...")
-					wg.Wait()
+					compressFunc()
 					return ctx.Err()
 				}
 
@@ -109,7 +122,8 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 			}
 
 			wg.Wait()
-			c.log.Info("all logs have been saved", "outputFile", outputFile)
+			compressFunc()
+
 			return nil
 		},
 	}
@@ -120,6 +134,7 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 	cmd.Flags().IntVarP(&maxRequest, "max-request", "m", 15, "Max RPC requests/sec")
 	cmd.Flags().Uint32VarP(&blockRangeLimit, "block-range-limit", "b", 5, "Max blocks per log query")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "export.ndjson", "Output file path (NDJSON)")
+	cmd.Flags().BoolVarP(&compress, "compress", "c", false, "Compress to GZIP")
 
 	c.root.AddCommand(cmd)
 
