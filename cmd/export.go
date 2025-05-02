@@ -112,7 +112,9 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 					c.log.Info("still retrieving logs...")
 				case <-ctx.Done():
 					c.log.Info("context canceled, waiting for logs to be saved...")
-					compressFunc()
+					if err := compressFunc(); err != nil {
+						return errors.Join(fmt.Errorf("error compressing file: %w", err), ctx.Err())
+					}
 					return ctx.Err()
 				}
 
@@ -122,7 +124,9 @@ The process can be interrupted at any time (Ctrl+C), and it will attempt to save
 			}
 
 			wg.Wait()
-			compressFunc()
+			if err := compressFunc(); err != nil {
+				return fmt.Errorf("error compressing file: %w", err)
+			}
 
 			return nil
 		},

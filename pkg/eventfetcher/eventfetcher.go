@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/gacevicljubisa/batchlog/pkg/ethclientwrapper"
+	"github.com/gacevicljubisa/batchlog/pkg/logcache"
 )
 
 type Client struct {
@@ -20,6 +21,7 @@ type Client struct {
 	client          *ethclientwrapper.Client
 	logger          log.Logger
 	blockRangeLimit uint32
+	logCache        *logcache.Cache
 
 	batchCreatedTopic       common.Hash
 	batchTopUpTopic         common.Hash
@@ -31,6 +33,7 @@ type Client struct {
 func NewClient(client *ethclientwrapper.Client, postageStampContractABI abi.ABI, blockRangeLimit uint32, logger log.Logger) *Client {
 	return &Client{
 		validate:                validator.New(),
+		logCache:                logcache.New(),
 		client:                  client,
 		logger:                  logger,
 		blockRangeLimit:         blockRangeLimit,
@@ -38,7 +41,7 @@ func NewClient(client *ethclientwrapper.Client, postageStampContractABI abi.ABI,
 		batchTopUpTopic:         postageStampContractABI.Events["BatchTopUp"].ID,
 		batchDepthIncreaseTopic: postageStampContractABI.Events["BatchDepthIncrease"].ID,
 		priceUpdateTopic:        postageStampContractABI.Events["PriceUpdate"].ID,
-		pausedTopic:             postageStampContractABI.Events["Paused"].ID,
+		// pausedTopic:             postageStampContractABI.Events["Paused"].ID,
 	}
 }
 
@@ -56,6 +59,13 @@ func (c *Client) GetLogs(ctx context.Context, tr *Request) (<-chan types.Log, <-
 	go func() {
 		defer close(logChan)
 		defer close(errorChan)
+		defer func() {
+			priceUpdateLog := c.logCache.Get()
+			if priceUpdateLog != nil {
+				c.logger.Info("sending last cached value", "transactionHash", priceUpdateLog.TxHash)
+				logChan <- *priceUpdateLog
+			}
+		}()
 
 		if err := c.validate.Struct(tr); err != nil {
 			errorChan <- fmt.Errorf("error validating request: %w", err)
@@ -125,6 +135,10 @@ func (c *Client) fetchLogs(ctx context.Context, query ethereum.FilterQuery, logs
 		}
 
 		for _, log := range logs {
+			if log.Topics[0] == c.priceUpdateTopic {
+				c.logCache.Set(&log)
+				continue
+			}
 			select {
 			case logsChan <- log:
 			case <-ctx.Done():

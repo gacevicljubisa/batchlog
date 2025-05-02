@@ -27,7 +27,6 @@ linter:
 vet:
 	$(GO) vet ./...
 
-
 .PHONY: build
 build: export CGO_ENABLED=0
 build:
@@ -37,5 +36,10 @@ build:
 clean:
 	$(GO) clean
 	rm -rf dist/
+
+
+.PHONY: test
+test:
+	$(GO) test -v ./pkg/...
 
 FORCE:
